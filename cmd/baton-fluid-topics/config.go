@@ -6,10 +6,17 @@ import (
 )
 
 var (
+	bearerTokenField = field.StringField(
+		"bearer-token",
+		field.WithDescription("Bearer Token for authentication"),
+		field.WithRequired(true),
+	)
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
 	// required.
-	ConfigurationFields = []field.SchemaField{}
+	ConfigurationFields = []field.SchemaField{
+		bearerTokenField,
+	}
 
 	// FieldRelationships defines relationships between the fields listed in
 	// ConfigurationFields that can be automatically validated. For example, a

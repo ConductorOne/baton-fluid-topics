@@ -4,17 +4,23 @@ import (
 	"context"
 	"io"
 
+	"github.com/conductorone/baton-fluid-topics/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
-type Connector struct{}
+type Connector struct {
+	client *client.FluidTopicsClient
+}
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	return []connectorbuilder.ResourceSyncer{
-		newUserBuilder(),
+		newUserBuilder(d.client),
+		newRoleBuilder(d.client),
 	}
 }
 
@@ -27,8 +33,8 @@ func (d *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 // Metadata returns metadata about the connector.
 func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
-		DisplayName: "My Baton Connector",
-		Description: "The template implementation of a baton connector",
+		DisplayName: "Baton Fluid topics connector",
+		Description: "Implementation of the Fluid topics connector, with the resources users, roles and groups.",
 	}, nil
 }
 
@@ -39,6 +45,16 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context) (*Connector, error) {
-	return &Connector{}, nil
+func New(ctx context.Context, FluidTopicsBearerToken string) (*Connector, error) {
+	l := ctxzap.Extract(ctx)
+
+	fluidTopicClient, err := client.New(ctx, FluidTopicsBearerToken)
+	if err != nil {
+		l.Error("error creating Braintree client", zap.Error(err))
+		return nil, err
+	}
+
+	return &Connector{
+		client: fluidTopicClient,
+	}, nil
 }
