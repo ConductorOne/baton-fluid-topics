@@ -45,10 +45,10 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, FluidTopicsBearerToken string) (*Connector, error) {
+func New(ctx context.Context, fluidTopicsBearerToken string) (*Connector, error) {
 	l := ctxzap.Extract(ctx)
 
-	fluidTopicClient, err := client.New(ctx, FluidTopicsBearerToken)
+	fluidTopicClient, err := client.New(ctx, fluidTopicsBearerToken)
 	if err != nil {
 		l.Error("error creating Braintree client", zap.Error(err))
 		return nil, err

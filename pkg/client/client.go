@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	baseURL          = "http://localhost:8080"
+	baseURL          = "https://powin-staging.fluidtopics.net/api"
 	getUsers         = "/users"
 	getUserRolesById = "/users/%s/roles"
 	getUserUsage     = "/users/%s/dump"

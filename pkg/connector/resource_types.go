@@ -15,8 +15,4 @@ var (
 		Id:          "Role",
 		DisplayName: "role",
 	}
-	groupResourceType = &v2.ResourceType{
-		Id:          "Group",
-		DisplayName: "group",
-	}
 )

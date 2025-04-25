@@ -9,6 +9,7 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
@@ -55,8 +56,41 @@ func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
-func (o *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	return nil, "", nil, nil
+func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	var grants []*v2.Grant
+	var userID = res.Id.Resource
+
+	user, _, err := u.client.GetRolesByUserID(ctx, userID)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	rolesTypes := []struct {
+		RoleType string
+		RoleList []string
+	}{
+		{"manual", user.ManualRoles},
+		{"authentication", user.AuthenticationRoles},
+		{"default", user.DefaultRoles},
+	}
+
+	for _, roleTypeData := range rolesTypes {
+		for _, role := range roleTypeData.RoleList {
+			typedRole := TypedRole{Name: role, Type: roleTypeData.RoleType}
+			roleResource, err := parseIntoTypedRoleResource(typedRole)
+			if err != nil {
+				return nil, "", nil, err
+			}
+
+			roleGrant := grant.NewGrant(roleResource, "assigned", res, grant.WithAnnotation(&v2.V1Identifier{
+				Id: fmt.Sprintf("role-grant:%s:%s:%s", role, userID, roleTypeData.RoleType),
+			}))
+
+			grants = append(grants, roleGrant)
+		}
+	}
+
+	return grants, "", nil, nil
 }
 
 func parseIntoUserResource(user *client.UserList, userUsage *client.UserUsage, parentResourceID *v2.ResourceId) (*v2.Resource, error) {

@@ -4,7 +4,7 @@ import "time"
 
 type UserList struct {
 	Id          string `json:"id"`
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"displayName"`
 	Email       string `json:"emailAddress"`
 }
 
@@ -47,11 +47,4 @@ type UserGroupResponse struct {
 }
 
 type RoleCache struct {
-}
-
-type Pagination struct {
-	paging struct {
-		page    string `json:"page"`
-		perPage string `json:"per_page"`
-	}
 }
