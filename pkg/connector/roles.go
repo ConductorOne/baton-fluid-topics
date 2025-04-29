@@ -9,7 +9,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
-	"github.com/conductorone/baton-sdk/pkg/types/resource"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
 type roleBuilder struct {
@@ -17,15 +17,35 @@ type roleBuilder struct {
 	client       *client.FluidTopicsClient
 }
 
-var Roles = []string{"PERSONAL_BOOK_USER", "PERSONAL_BOOK_SHARE_USER", "HTML_EXPORT_USER", "PDF_EXPORT_USER",
-	"COLLECTION_USER", "PRINT_USER", "OFFLINE_USER", "SAVED_SEARCH_USER", "BETA_USER", "DEBUG_USER",
-	"ANALYTICS_USER", "FEEDBACK_USER", "RATING_USER", "GENERATIVE_AI_USER"}
+type Role struct {
+	Name        string
+	Description string
+	Type        string // "manual", "authentication", "default"
+}
 
-var AdminRoles = []string{"ADMIN", "KHUB_ADMIN", "CONTENT_PUBLISHER", "USERS_ADMIN", "PORTAL_ADMIN"}
+var Roles = []Role{
+	{"PERSONAL_BOOK_USER", "Can create personal books", ""},
+	{"PERSONAL_BOOK_SHARE_USER", "Can create and share personal books", ""},
+	{"HTML_EXPORT_USER", "Can create personal books and download to HTML", ""},
+	{"PDF_EXPORT_USER", "Can create personal books and download to PDF", ""},
+	{"COLLECTION_USER", "Can create collections", ""},
+	{"PRINT_USER", "Can use the print feature in the Reader page", ""},
+	{"OFFLINE_USER", "Can use offline features", ""},
+	{"SAVED_SEARCH_USER", "Can save searches", ""},
+	{"BETA_USER", "Can use beta features", ""},
+	{"DEBUG_USER", "Can access debug tools", ""},
+	{"ANALYTICS_USER", "Can see analytics", ""},
+	{"FEEDBACK_USER", "Can send feedback", ""},
+	{"RATING_USER", "Can rate content", ""},
+	{"GENERATIVE_AI_USER", "Can use generative AI features", ""},
+}
 
-type TypedRole struct {
-	Name string
-	Type string // "manual", "authentication", "default"
+var AdminRoles = []Role{
+	{"ADMIN", "Administrator with full access", ""},
+	{"KHUB_ADMIN", "Can administer the Knowledge Hub and publish, modify, and delete content published through any source", ""},
+	{"CONTENT_PUBLISHER", "Can publish, modify, and delete content", ""},
+	{"USERS_ADMIN", "Can list and manage users", ""},
+	{"PORTAL_ADMIN", "Can configure portal display", ""},
 }
 
 func (r *roleBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
@@ -37,9 +57,10 @@ func (r *roleBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func (r *roleBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var resources []*v2.Resource
 
+	// Iterar sobre los roles normales
 	for _, role := range Roles {
 		for _, roleType := range []string{"manual", "authentication", "default"} {
-			typedRole := TypedRole{Name: role, Type: roleType}
+			typedRole := Role{Name: role.Name, Description: role.Description, Type: roleType} // Asegurarse de asignar el tipo
 			roleResource, err := parseIntoTypedRoleResource(typedRole)
 			if err != nil {
 				return nil, "", nil, err
@@ -48,9 +69,10 @@ func (r *roleBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		}
 	}
 
+	// Iterar sobre los roles admin
 	for _, role := range AdminRoles {
 		for _, roleType := range []string{"manual", "authentication"} {
-			typedRole := TypedRole{Name: role, Type: roleType}
+			typedRole := Role{Name: role.Name, Description: role.Description, Type: roleType}
 			roleResource, err := parseIntoTypedRoleResource(typedRole)
 			if err != nil {
 				return nil, "", nil, err
@@ -69,7 +91,7 @@ func (r *roleBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 
 	assigmentOptions := []entitlement.EntitlementOption{
 		entitlement.WithGrantableTo(userResourceType),
-		entitlement.WithDescription(resource.DisplayName),
+		entitlement.WithDescription(resource.Description),
 		entitlement.WithDisplayName(resource.DisplayName),
 	}
 
@@ -83,20 +105,20 @@ func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagi
 	return nil, "", nil, nil
 }
 
-func parseIntoTypedRoleResource(role TypedRole) (*v2.Resource, error) {
+func parseIntoTypedRoleResource(role Role) (*v2.Resource, error) {
 	resourceID := fmt.Sprintf("%s:%s", role.Type, role.Name)
 	displayName := fmt.Sprintf("%s:%s", role.Type, role.Name)
 
-	ret, err := resource.NewResource(
+	ret, err := rs.NewResource(
 		resourceID,
 		roleResourceType,
 		displayName,
+		rs.WithDescription(role.Description),
 	)
+
 	if err != nil {
 		return nil, err
 	}
-
-	ret.DisplayName = displayName
 
 	return ret, nil
 }

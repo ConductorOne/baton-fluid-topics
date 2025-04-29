@@ -8,12 +8,16 @@ type UserList struct {
 	Email       string `json:"emailAddress"`
 }
 
+type AuthenticationIdentifiers struct {
+	Identifier string `json:"identifier"`
+	Realm      string `json:"realm"`
+}
+
 type UserUsage struct {
-	ID                         string    `json:"id"`
-	Active                     bool      `json:"active"`
-	PrivacyPolicyAgreementDate time.Time `json:"privacyPolicyAgreementDate"`
-	CreationDate               time.Time `json:"creationDate"`
-	LastLoginDate              time.Time `json:"lastLoginDate"`
+	ID                        string                      `json:"id"`
+	CreationDate              time.Time                   `json:"creationDate"`
+	LastLoginDate             time.Time                   `json:"lastActivityDate"`
+	AuthenticationIdentifiers []AuthenticationIdentifiers `json:"authenticationIdentifiers"`
 }
 
 type UserRole struct {
@@ -21,11 +25,6 @@ type UserRole struct {
 	ManualRoles         []string `json:"manualRoles"`
 	AuthenticationRoles []string `json:"authenticationRoles"`
 	DefaultRoles        []string `json:"defaultRoles"`
-}
-
-type RoleKey struct {
-	Name string
-	Type string
 }
 
 type UserGroup struct {

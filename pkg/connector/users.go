@@ -55,7 +55,22 @@ func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 	return nil, "", nil, nil
 }
 
-// Grants always returns an empty slice for users since they don't have any entitlements.
+func getRoleDescription(roleName string) string {
+	for _, r := range Roles {
+		if r.Name == roleName {
+			return r.Description
+		}
+	}
+	for _, r := range AdminRoles {
+		if r.Name == roleName {
+			return r.Description
+		}
+	}
+	return ""
+}
+
+// The Grants function in the roles resource is performed in users for a better performance,
+// since in this way for each user there is, the grants are directly assigned depending on which roles he has.
 func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var grants []*v2.Grant
 	var userID = res.Id.Resource
@@ -75,35 +90,44 @@ func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *paginatio
 	}
 
 	for _, roleTypeData := range rolesTypes {
-		for _, role := range roleTypeData.RoleList {
-			typedRole := TypedRole{Name: role, Type: roleTypeData.RoleType}
+		for _, roleName := range roleTypeData.RoleList {
+			description := getRoleDescription(roleName)
+
+			typedRole := Role{
+				Name:        roleName,
+				Description: description,
+				Type:        roleTypeData.RoleType,
+			}
+
 			roleResource, err := parseIntoTypedRoleResource(typedRole)
 			if err != nil {
 				return nil, "", nil, err
 			}
 
 			roleGrant := grant.NewGrant(roleResource, "assigned", res, grant.WithAnnotation(&v2.V1Identifier{
-				Id: fmt.Sprintf("role-grant:%s:%s:%s", role, userID, roleTypeData.RoleType),
-			}))
-
+				Id: fmt.Sprintf("role-grant:%s:%s:%s", roleName, userID, roleTypeData.RoleType),
+			}),
+			)
 			grants = append(grants, roleGrant)
 		}
 	}
-
 	return grants, "", nil, nil
 }
 
 func parseIntoUserResource(user *client.UserList, userUsage *client.UserUsage, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var userStatus = v2.UserTrait_Status_STATUS_ENABLED
 
+	var realm string
+	if len(userUsage.AuthenticationIdentifiers) > 0 {
+		realm = userUsage.AuthenticationIdentifiers[0].Realm
+	}
+
 	profile := map[string]interface{}{
-		"user_id":                       user.Id,
-		"user_name":                     user.DisplayName,
-		"email_id":                      user.Email,
-		"privacy_policy_agreement_date": userUsage.PrivacyPolicyAgreementDate.Format(time.RFC3339),
-		"status":                        userUsage.Active,
-		"creation_date":                 userUsage.CreationDate.Format(time.RFC3339),
-		"last_login":                    userUsage.LastLoginDate.Format(time.RFC3339),
+		"user_id":              user.Id,
+		"user_name":            user.DisplayName,
+		"email_id":             user.Email,
+		"creation_date":        userUsage.CreationDate.Format(time.RFC3339),
+		"authentication_realm": realm,
 	}
 
 	displayName := user.DisplayName
@@ -115,12 +139,17 @@ func parseIntoUserResource(user *client.UserList, userUsage *client.UserUsage, p
 		rs.WithEmail(user.Email, true),
 	}
 
+	if !userUsage.LastLoginDate.IsZero() {
+		userTraits = append(userTraits, rs.WithLastLogin(userUsage.LastLoginDate))
+	}
+
 	ret, err := rs.NewUserResource(
 		displayName,
 		userResourceType,
 		user.Id,
 		userTraits,
 	)
+
 	if err != nil {
 		return nil, err
 	}
