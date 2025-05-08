@@ -2,9 +2,28 @@
 
 # `baton-fluid-topics` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-fluid-topics.svg)](https://pkg.go.dev/github.com/conductorone/baton-fluid-topics) ![main ci](https://github.com/conductorone/baton-fluid-topics/actions/workflows/main.yaml/badge.svg)
 
-`baton-fluid-topics` is a connector for built using the [Baton SDK](https://github.com/conductorone/baton-sdk).
+`baton-fluid-topics` is a connector for built using the [Fluid-Topics](https://www.fluidtopics.com/).
 
 Check out [Baton](https://github.com/conductorone/baton) to learn more the project in general.
+
+## Prerequisites
+
+In order to use this connector, you need an API key with ADMIN permissions, which is indicated by the `--bearer-token` flag and a domain with the `--domain` flag.
+Example:
+For connecting to https://example.fluidtopics.net you should do:
+
+  ```
+  baton-fluid-topics --bearer-token abcdefghij1234567890 --domain example
+  ```
+
+## Where can I find my API Key?
+1- Log in [Fluid-Topics](https://www.fluidtopics.com/), then in the top right corner of the main page of your fluid topics page, click on administration.
+2- In the menu that opens, click on integrations.
+3- On the integrations page, below the list of api keys, a section will appear to create an api-key by adding a name and clicking create&add.
+4- When you click on create&add it will open a menu of options to customize the apikey. 
+5- After configuring your api key click on ok, and when the menu closes, in the integrations page with the apikey list click on save in the lower right corner.
+   
+Note: documentation of api keys: [Fluid-topics-APIKEY](https://doc.fluidtopics.com/r/Fluid-Topics-Configuration-and-Administration-Guide/Configure-a-Fluid-Topics-tenant/Integrations/API-keys)
 
 # Getting Started
 
@@ -63,6 +82,8 @@ Available Commands:
   help               Help about any command
 
 Flags:
+      --bearer-token string          REQUIRED: The client secret token used to authenticate with ConductorOne
+      --domain string                REQUIRED: Fluid topics account domain 
       --client-id string             The client ID used to authenticate with ConductorOne ($BATON_CLIENT_ID)
       --client-secret string         The client secret used to authenticate with ConductorOne ($BATON_CLIENT_SECRET)
   -f, --file string                  The path to the c1z file to sync with ($BATON_FILE) (default "sync.c1z")

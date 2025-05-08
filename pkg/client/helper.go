@@ -2,18 +2,11 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net/url"
-	"strconv"
 
 	"golang.org/x/oauth2"
 )
-
-const ItemsPerPage = 5
-
-type PageOptions struct {
-	Next     string
-	PageSize int
-}
 
 func getTokenSource(_ context.Context, bearerToken string) oauth2.TokenSource {
 	return oauth2.StaticTokenSource(&oauth2.Token{
@@ -22,26 +15,12 @@ func getTokenSource(_ context.Context, bearerToken string) oauth2.TokenSource {
 	})
 }
 
-func WithPageLimit(pageSize int) ReqOpt {
-	if pageSize != 0 {
-		return WithQueryParam("per_page", strconv.Itoa(pageSize))
-	}
-	pageSize = ItemsPerPage
-	return WithQueryParam("per_page", strconv.Itoa(pageSize))
+func (e FluidTopicsAPIError) Message() string {
+	return fmt.Sprintf("%s (HTTP %d): %s - %s", e.ErrorText, e.Status, e.MessageStr, e.Path)
 }
 
-func WithPageCursor(nextPageToken string) ReqOpt {
-	return WithQueryParam("cursor", nextPageToken)
-}
-
-func WithQueryParam(key string, value string) ReqOpt {
-	return func(reqURL *url.URL) {
-		if value != "" {
-			q := reqURL.Query()
-			q.Set(key, value)
-			reqURL.RawQuery = q.Encode()
-		}
-	}
+func (e FluidTopicsAPIError) Error() string {
+	return fmt.Sprintf("%s (HTTP %d): %s - %s", e.ErrorText, e.Status, e.MessageStr, e.Path)
 }
 
 type ReqOpt func(reqURL *url.URL)

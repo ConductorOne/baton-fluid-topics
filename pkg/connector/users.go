@@ -8,6 +8,7 @@ import (
 	"github.com/conductorone/baton-fluid-topics/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
+	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
@@ -18,29 +19,27 @@ type userBuilder struct {
 	client       *client.FluidTopicsClient
 }
 
-func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
+func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
-func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+func (u *userBuilder) List(ctx context.Context, _ *v2.ResourceId, _ *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var resources []*v2.Resource
 
-	users, _, _, err := o.client.ListUsers(ctx, pToken)
+	users, _, _, err := u.client.ListUsers(ctx)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
 	for _, user := range users {
 		userID := user.Id
-		userUsage, _, err := o.client.GetUserUsage(ctx, userID)
+		userCopy, _, err := u.client.GetUserDetails(ctx, userID)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("error getting user Usage %s: %w", userID, err)
+			return nil, "", nil, fmt.Errorf("error getting user details %s: %w", userID, err)
 		}
-		userUsageCopy := userUsage
-		userCopy := user
-		userResource, err := parseIntoUserResource(&userCopy, &userUsageCopy, parentResourceID)
+		userResource, err := parseIntoUserResource(ctx, &userCopy)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -51,22 +50,8 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 }
 
 // Entitlements always returns an empty slice for users.
-func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (u *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
-}
-
-func getRoleDescription(roleName string) string {
-	for _, r := range Roles {
-		if r.Name == roleName {
-			return r.Description
-		}
-	}
-	for _, r := range AdminRoles {
-		if r.Name == roleName {
-			return r.Description
-		}
-	}
-	return ""
 }
 
 // The Grants function in the roles resource is performed in users for a better performance,
@@ -93,13 +78,13 @@ func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *paginatio
 		for _, roleName := range roleTypeData.RoleList {
 			description := getRoleDescription(roleName)
 
-			typedRole := Role{
+			typedRole := client.Role{
 				Name:        roleName,
 				Description: description,
 				Type:        roleTypeData.RoleType,
 			}
 
-			roleResource, err := parseIntoTypedRoleResource(typedRole)
+			roleResource, err := parseIntoRoleResource(ctx, typedRole)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -114,19 +99,96 @@ func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *paginatio
 	return grants, "", nil, nil
 }
 
-func parseIntoUserResource(user *client.UserList, userUsage *client.UserUsage, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func (u *userBuilder) CreateAccountCapabilityDetails(_ context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
+	return &v2.CredentialDetailsAccountProvisioning{
+		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
+			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
+		},
+		PreferredCredentialOption: v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
+	}, nil, nil
+}
+
+func (u *userBuilder) CreateAccount(
+	ctx context.Context,
+	accountInfo *v2.AccountInfo,
+	credentialOptions *v2.CredentialOptions,
+) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
+	newUser, err := createNewUserInfo(accountInfo, credentialOptions)
+	if err != nil {
+		return nil, nil, annotations.Annotations{}, err
+	}
+
+	_, err = u.client.CreateUser(ctx, *newUser)
+	if err != nil {
+		return nil, nil, annotations.Annotations{}, err
+	}
+
+	userResource, err := parseIntoUserResource(
+		ctx,
+		&client.User{
+			DisplayName: newUser.Name,
+			Email:       newUser.EmailAddress,
+			Credentials: client.Credentials{
+				Login:    newUser.EmailAddress,
+				Password: newUser.Password,
+			},
+		},
+	)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	caResponse := &v2.CreateAccountResponse_SuccessResult{
+		Resource: userResource,
+	}
+
+	passResult := &v2.PlaintextData{
+		Name:  "password",
+		Bytes: []byte(newUser.Password),
+	}
+	return caResponse, []*v2.PlaintextData{passResult}, nil, nil
+}
+
+func createNewUserInfo(accountInfo *v2.AccountInfo, credentialOptions *v2.CredentialOptions) (*client.NewUserInfo, error) {
+	pMap := accountInfo.Profile.AsMap()
+
+	name, ok := pMap["name"].(string)
+	if !ok || name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	email, ok := pMap["emailAddress"].(string)
+	if !ok || email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+
+	generatedPassword, err := generateCredentials(credentialOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	newUser := &client.NewUserInfo{
+		Name:                   name,
+		Password:               generatedPassword,
+		EmailAddress:           email,
+		PrivacyPolicyAgreement: true,
+	}
+
+	return newUser, nil
+}
+
+func parseIntoUserResource(ctx context.Context, user *client.User) (*v2.Resource, error) {
 	var userStatus = v2.UserTrait_Status_STATUS_ENABLED
 
 	var realm string
-	if len(userUsage.AuthenticationIdentifiers) > 0 {
-		realm = userUsage.AuthenticationIdentifiers[0].Realm
+	if len(user.AuthenticationIdentifiers) > 0 {
+		realm = user.AuthenticationIdentifiers[0].Realm
 	}
 
 	profile := map[string]interface{}{
 		"user_id":              user.Id,
 		"user_name":            user.DisplayName,
 		"email_id":             user.Email,
-		"creation_date":        userUsage.CreationDate.Format(time.RFC3339),
+		"creation_date":        user.CreationDate.Format(time.RFC3339),
 		"authentication_realm": realm,
 	}
 
@@ -139,8 +201,8 @@ func parseIntoUserResource(user *client.UserList, userUsage *client.UserUsage, p
 		rs.WithEmail(user.Email, true),
 	}
 
-	if !userUsage.LastLoginDate.IsZero() {
-		userTraits = append(userTraits, rs.WithLastLogin(userUsage.LastLoginDate))
+	if !user.LastLoginDate.IsZero() {
+		userTraits = append(userTraits, rs.WithLastLogin(user.LastLoginDate))
 	}
 
 	ret, err := rs.NewUserResource(

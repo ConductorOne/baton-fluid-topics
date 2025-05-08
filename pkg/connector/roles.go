@@ -17,51 +17,44 @@ type roleBuilder struct {
 	client       *client.FluidTopicsClient
 }
 
-type Role struct {
-	Name        string
-	Description string
-	Type        string // "manual", "authentication", "default"
+var roles = map[string]string{
+	"PERSONAL_BOOK_USER":       "Can create personal books",
+	"PERSONAL_BOOK_SHARE_USER": "Can create and share personal books",
+	"HTML_EXPORT_USER":         "Can create personal books and download to HTML",
+	"PDF_EXPORT_USER":          "Can create personal books and download to PDF",
+	"COLLECTION_USER":          "Can create collections",
+	"PRINT_USER":               "Can use the print feature in the Reader page",
+	"OFFLINE_USER":             "Can use offline features",
+	"SAVED_SEARCH_USER":        "Can save searches",
+	"BETA_USER":                "Can use beta features",
+	"DEBUG_USER":               "Can access debug tools",
+	"ANALYTICS_USER":           "Can see analytics",
+	"FEEDBACK_USER":            "Can send feedback",
+	"RATING_USER":              "Can rate content",
+	"GENERATIVE_AI_USER":       "Can use generative AI features",
 }
 
-var Roles = []Role{
-	{"PERSONAL_BOOK_USER", "Can create personal books", ""},
-	{"PERSONAL_BOOK_SHARE_USER", "Can create and share personal books", ""},
-	{"HTML_EXPORT_USER", "Can create personal books and download to HTML", ""},
-	{"PDF_EXPORT_USER", "Can create personal books and download to PDF", ""},
-	{"COLLECTION_USER", "Can create collections", ""},
-	{"PRINT_USER", "Can use the print feature in the Reader page", ""},
-	{"OFFLINE_USER", "Can use offline features", ""},
-	{"SAVED_SEARCH_USER", "Can save searches", ""},
-	{"BETA_USER", "Can use beta features", ""},
-	{"DEBUG_USER", "Can access debug tools", ""},
-	{"ANALYTICS_USER", "Can see analytics", ""},
-	{"FEEDBACK_USER", "Can send feedback", ""},
-	{"RATING_USER", "Can rate content", ""},
-	{"GENERATIVE_AI_USER", "Can use generative AI features", ""},
+var adminRoles = map[string]string{
+	"ADMIN":             "Administrator with full access",
+	"KHUB_ADMIN":        "Can administer the Knowledge Hub and publish, modify, and delete content published through any source",
+	"CONTENT_PUBLISHER": "Can publish, modify, and delete content",
+	"USERS_ADMIN":       "Can list and manage users",
+	"PORTAL_ADMIN":      "Can configure portal display",
 }
 
-var AdminRoles = []Role{
-	{"ADMIN", "Administrator with full access", ""},
-	{"KHUB_ADMIN", "Can administer the Knowledge Hub and publish, modify, and delete content published through any source", ""},
-	{"CONTENT_PUBLISHER", "Can publish, modify, and delete content", ""},
-	{"USERS_ADMIN", "Can list and manage users", ""},
-	{"PORTAL_ADMIN", "Can configure portal display", ""},
-}
+func (r *roleBuilder) ResourceType(ctx context.Context) *v2.ResourceType { return roleResourceType }
 
-func (r *roleBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
-	return roleResourceType
-}
-
-// List returns all the users from the database as resource objects.
-// Users include a UserTrait because they are the 'shape' of a standard user.
-func (r *roleBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+func (r *roleBuilder) List(ctx context.Context, _ *v2.ResourceId, _ *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var resources []*v2.Resource
 
-	// Iterar sobre los roles normales
-	for _, role := range Roles {
+	for name, desc := range roles {
 		for _, roleType := range []string{"manual", "authentication", "default"} {
-			typedRole := Role{Name: role.Name, Description: role.Description, Type: roleType} // Asegurarse de asignar el tipo
-			roleResource, err := parseIntoTypedRoleResource(typedRole)
+			role := client.Role{
+				Name:        name,
+				Description: desc,
+				Type:        roleType,
+			}
+			roleResource, err := parseIntoRoleResource(ctx, role)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -69,11 +62,14 @@ func (r *roleBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		}
 	}
 
-	// Iterar sobre los roles admin
-	for _, role := range AdminRoles {
+	for name, desc := range adminRoles {
 		for _, roleType := range []string{"manual", "authentication"} {
-			typedRole := Role{Name: role.Name, Description: role.Description, Type: roleType}
-			roleResource, err := parseIntoTypedRoleResource(typedRole)
+			role := client.Role{
+				Name:        name,
+				Description: desc,
+				Type:        roleType,
+			}
+			roleResource, err := parseIntoRoleResource(ctx, role)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -84,9 +80,8 @@ func (r *roleBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	return resources, "", nil, nil
 }
 
-// Entitlements always returns an empty slice for users.
 func (r *roleBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-	var rv []*v2.Entitlement
+	var entitlements []*v2.Entitlement
 	permissionName := "assigned"
 
 	assigmentOptions := []entitlement.EntitlementOption{
@@ -95,17 +90,94 @@ func (r *roleBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 		entitlement.WithDisplayName(resource.DisplayName),
 	}
 
-	rv = append(rv, entitlement.NewPermissionEntitlement(resource, permissionName, assigmentOptions...))
+	entitlements = append(entitlements, entitlement.NewPermissionEntitlement(resource, permissionName, assigmentOptions...))
 
-	return rv, "", nil, nil
+	return entitlements, "", nil, nil
 }
 
-// Grants always returns an empty slice for users since they don't have any entitlements.
-func (r *roleBuilder) Grants(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+func (r *roleBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+	if principal.Id.ResourceType != userResourceType.Id {
+		return nil, fmt.Errorf("only users can be granted with role membership")
+	}
+
+	userID := principal.Id.Resource
+
+	roleType, roleName, err := parseEntitlementId(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	if roleType != "manual" {
+		return nil, fmt.Errorf("only manual roles can be granted")
+	}
+
+	userRoles, _, err := r.client.GetRolesByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, existingRole := range userRoles.ManualRoles {
+		if existingRole == roleName {
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
+		}
+	}
+
+	userRoles.ManualRoles = append(userRoles.ManualRoles, roleName)
+
+	annotation, err := r.client.UpdateUserManualRoles(ctx, userID, userRoles.ManualRoles)
+	if err != nil {
+		return nil, err
+	}
+
+	return annotation, nil
+}
+
+func (r *roleBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	userID := grant.Principal.Id.Resource
+
+	roleType, roleName, err := parseEntitlementId(grant.Entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	if roleType != "manual" {
+		return nil, fmt.Errorf("only manual roles can be revoked")
+	}
+
+	userRoles, _, err := r.client.GetRolesByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedRoles := []string{}
+	found := false
+	for _, existingRole := range userRoles.ManualRoles {
+		if existingRole == roleName {
+			found = true
+			continue
+		}
+		updatedRoles = append(updatedRoles, existingRole)
+	}
+
+	if !found {
+		return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+	}
+
+	userRoles.ManualRoles = updatedRoles
+
+	annotation, err := r.client.UpdateUserManualRoles(ctx, userID, userRoles.ManualRoles)
+	if err != nil {
+		return nil, err
+	}
+
+	return annotation, nil
+}
+
+func (r *roleBuilder) Grants(_ context.Context, _ *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
-func parseIntoTypedRoleResource(role Role) (*v2.Resource, error) {
+func parseIntoRoleResource(_ context.Context, role client.Role) (*v2.Resource, error) {
 	resourceID := fmt.Sprintf("%s:%s", role.Type, role.Name)
 	displayName := fmt.Sprintf("%s:%s", role.Type, role.Name)
 

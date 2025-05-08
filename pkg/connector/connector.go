@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/conductorone/baton-fluid-topics/pkg/client"
@@ -31,24 +32,59 @@ func (d *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 }
 
 // Metadata returns metadata about the connector.
-func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
+func (d *Connector) Metadata(_ context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
-		DisplayName: "Baton Fluid topics connector",
-		Description: "Implementation of the Fluid topics connector, with the resources users, roles and groups.",
+		DisplayName: "Fluid Topics Connector",
+		Description: "Connector to sync and manage users in Fluid Topics.",
+		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
+			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
+				"name": {
+					DisplayName: "Name",
+					Required:    true,
+					Description: "The display name of the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "name",
+					Order:       1,
+				},
+				"emailAddress": {
+					DisplayName: "Email Address",
+					Required:    true,
+					Description: "The email address of the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "user@mail.com",
+					Order:       2,
+				},
+			},
+		},
 	}, nil
 }
 
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	return nil, nil
+	roles, annotation, err := d.client.GetAuthenticationInfo(ctx)
+	if err != nil {
+		return annotation, fmt.Errorf("could not fetch current user roles: %w", err)
+	}
+
+	for _, role := range roles.Profile.Roles {
+		if role == "ADMIN" {
+			return annotation, nil
+		}
+	}
+
+	return annotation, fmt.Errorf("authentication user must have ADMIN role to use this connector")
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, fluidTopicsBearerToken string) (*Connector, error) {
+func New(ctx context.Context, fluidTopicsBearerToken string, fluidTopicsDomain string) (*Connector, error) {
 	l := ctxzap.Extract(ctx)
 
-	fluidTopicClient, err := client.New(ctx, fluidTopicsBearerToken)
+	fluidTopicClient, err := client.New(ctx, fluidTopicsBearerToken, fluidTopicsDomain)
 	if err != nil {
 		l.Error("error creating Braintree client", zap.Error(err))
 		return nil, err

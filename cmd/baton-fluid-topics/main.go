@@ -49,8 +49,9 @@ func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, e
 	}
 
 	FluidTopicsBearerToken := v.GetString(bearerTokenField.FieldName)
+	FluidTopicsDomain := v.GetString(domainField.FieldName)
 
-	cb, err := connector.New(ctx, FluidTopicsBearerToken)
+	cb, err := connector.New(ctx, FluidTopicsBearerToken, FluidTopicsDomain)
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err

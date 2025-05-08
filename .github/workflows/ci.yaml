@@ -21,6 +21,9 @@ jobs:
         go-version: [1.22.x]
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
+    env:
+      FLUID_TOPICS_BEARER_TOKEN: ${{ secrets.FLUID_TOPICS_BEARER_TOKEN }}
+      FLUID_TOPICS_DOMAIN: ${{ secrets.FLUID_TOPICS_DOMAIN}}
     steps:
       - name: Install Go
         if: success()
@@ -39,25 +42,16 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # Define any services needed for the test suite (or delete this section)
-    # services:
-    #   postgres:
-    #     image: postgres:16
-    #     ports:
-    #       - "5432:5432"
-    #     env:
-    #       POSTGRES_PASSWORD: secretpassword
     env:
       BATON_LOG_LEVEL: debug
-      # Add any environment variables needed to run baton-fluid-topics
-      # BATON_BASE_URL: 'http://localhost:8080'
-      # BATON_ACCESS_TOKEN: 'secret_token'
-      # The following parameters are passed to grant/revoke commands
-      # Change these to the correct IDs for your test data
-      CONNECTOR_GRANT: 'grant:entitlement:group:1234:member:user:9876'
-      CONNECTOR_ENTITLEMENT: 'entitlement:group:1234:member'
-      CONNECTOR_PRINCIPAL: 'user:9876'
-      CONNECTOR_PRINCIPAL_TYPE: 'user'
+      FLUID_TOPICS_BEARER_TOKEN: ${{ secrets.FLUID_TOPICS_BEARER_TOKEN}}
+      FLUID_TOPICS_DOMAIN: ${{ secrets.FLUID_TOPICS_DOMAIN}}
+
+      CONNECTOR_GRANT: ${{ vars.CONNECTOR_GRANT }}
+      CONNECTOR_ENTITLEMENT: ${{ vars.CONNECTOR_ENTITLEMENT }}
+      CONNECTOR_PRINCIPAL: ${{ vars.CONNECTOR_PRINCIPAL }}
+      CONNECTOR_PRINCIPAL_TYPE: ${{ vars.CONNECTOR_PRINCIPAL_TYPE }}
+
     steps:
       - name: Install Go
         uses: actions/setup-go@v5
@@ -65,40 +59,29 @@ jobs:
           go-version: 1.22.x
       - name: Checkout code
         uses: actions/checkout@v4
-      # Install any dependencies here (or delete this)
-      # - name: Install postgres client
-      #   run: sudo apt install postgresql-client
-      # Run any fixture setup here (or delete this)
-      # - name: Import sql into postgres
-      #   run: psql -h localhost --user postgres -f environment.sql
-      #   env:
-      #     PGPASSWORD: secretpassword
       - name: Build baton-fluid-topics
         run: go build ./cmd/baton-fluid-topics
       - name: Run baton-fluid-topics
-        run: ./baton-fluid-topics
+        run: ./baton-fluid-topics --bearer-token=${{ env.FLUID_TOPICS_BEARER_TOKEN }} --domain=${{ env.FLUID_TOPICS_DOMAIN }}
 
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
 
-      - name: Check for grant before revoking
+      - name: Grant entitlement
+        run:  ./baton-fluid-topics --bearer-token=${{env.FLUID_TOPICS_BEARER_TOKEN}} --domain=${{ env.FLUID_TOPICS_DOMAIN }} --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
 
-        run:
-          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      - name: Re-sync the data from Fluid topics
+        run:  ./baton-fluid-topics --bearer-token=${{env.FLUID_TOPICS_BEARER_TOKEN}} --domain=${{ env.FLUID_TOPICS_DOMAIN }}
 
+      - name: Check grant was granted
+        run:  baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status '.grants[].principal.id.resource == "${{ env.CONNECTOR_PRINCIPAL }}"' | grep true
 
       - name: Revoke grants
-        run: ./baton-fluid-topics --revoke-grant="${{ env.CONNECTOR_GRANT }}"
+        run: ./baton-fluid-topics --bearer-token=${{env.FLUID_TOPICS_BEARER_TOKEN}} --domain=${{ env.FLUID_TOPICS_DOMAIN }} --revoke-grant="${{env.CONNECTOR_GRANT}}"
+
+      - name: Re-sync the data from Freshdesk
+        run: ./baton-fluid-topics --bearer-token=${{env.FLUID_TOPICS_BEARER_TOKEN}} --domain=${{ env.FLUID_TOPICS_DOMAIN }}
 
       - name: Check grant was revoked
-        run: ./baton-fluid-topics && baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL }}\" else . end"
-
-      - name: Grant entitlement
-        # Change the grant arguments to the correct IDs for your test data
-        run: ./baton-fluid-topics --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
-
-      - name: Check grant was re-granted
-
-        run:
-          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+        run: ./baton-fluid-topics --bearer-token=${{env.FLUID_TOPICS_BEARER_TOKEN}} --domain=${{ env.FLUID_TOPICS_DOMAIN }} && baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status 'if .grants then .grants[]?.principal.id.resource != "${{ env.CONNECTOR_PRINCIPAL }}" else . end'
 

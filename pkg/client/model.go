@@ -2,10 +2,14 @@ package client
 
 import "time"
 
-type UserList struct {
-	Id          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Email       string `json:"emailAddress"`
+type User struct {
+	Id                        string                      `json:"id"`
+	DisplayName               string                      `json:"displayName"`
+	Email                     string                      `json:"emailAddress"`
+	CreationDate              time.Time                   `json:"creationDate"`
+	LastLoginDate             time.Time                   `json:"lastActivityDate"`
+	AuthenticationIdentifiers []AuthenticationIdentifiers `json:"authenticationIdentifiers"`
+	Credentials               Credentials                 `json:"credentials"`
 }
 
 type AuthenticationIdentifiers struct {
@@ -13,37 +17,45 @@ type AuthenticationIdentifiers struct {
 	Realm      string `json:"realm"`
 }
 
-type UserUsage struct {
-	ID                        string                      `json:"id"`
-	CreationDate              time.Time                   `json:"creationDate"`
-	LastLoginDate             time.Time                   `json:"lastActivityDate"`
-	AuthenticationIdentifiers []AuthenticationIdentifiers `json:"authenticationIdentifiers"`
+type AuthenticationInfo struct {
+	Profile struct {
+		Roles []string `json:"roles"`
+	} `json:"profile"`
 }
 
-type UserRole struct {
+type Credentials struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}
+
+type UserRoles struct {
 	Id                  string   `json:"id"`
 	ManualRoles         []string `json:"manualRoles"`
 	AuthenticationRoles []string `json:"authenticationRoles"`
 	DefaultRoles        []string `json:"defaultRoles"`
 }
 
-type UserGroup struct {
-	Id                   string   `json:"id"`
-	ManualGroups         []string `json:"manualGroups"`
-	AuthenticationGroups []string `json:"authenticationGroups"`
+type FluidTopicsAPIError struct {
+	Timestamp  string `json:"timestamp"`
+	Status     int    `json:"status"`
+	ErrorText  string `json:"error"`
+	MessageStr string `json:"message"`
+	Path       string `json:"path"`
 }
 
-type UserUsageResponse struct {
-	User UserUsage `json:"user"`
+type NewUserInfo struct {
+	Name                   string `json:"name"`
+	EmailAddress           string `json:"emailAddress"`
+	Password               string `json:"password"`
+	PrivacyPolicyAgreement bool   `json:"privacyPolicyAgreement"`
 }
 
-type UserRoleResponse struct {
-	User []UserRole `json:"user"`
+type UserDataResponse struct {
+	User User `json:"user"`
 }
 
-type UserGroupResponse struct {
-	User []UserGroup `json:"user"`
-}
-
-type RoleCache struct {
+type Role struct {
+	Name        string
+	Description string
+	Type        string
 }

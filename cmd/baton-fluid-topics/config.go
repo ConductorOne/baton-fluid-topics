@@ -11,11 +11,17 @@ var (
 		field.WithDescription("Bearer Token for authentication"),
 		field.WithRequired(true),
 	)
+	domainField = field.StringField(
+		"domain",
+		field.WithDescription("Base domain for API, e.g. https://example.fluidtopics.net"),
+		field.WithRequired(true),
+	)
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
 	// required.
 	ConfigurationFields = []field.SchemaField{
 		bearerTokenField,
+		domainField,
 	}
 
 	// FieldRelationships defines relationships between the fields listed in
