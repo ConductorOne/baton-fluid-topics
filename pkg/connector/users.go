@@ -16,10 +16,10 @@ import (
 
 type userBuilder struct {
 	resourceType *v2.ResourceType
-	client       *client.FluidTopicsClient
+	client       client.FluidTopicsClientInterface
 }
 
-func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
+func (u *userBuilder) ResourceType(context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
@@ -39,7 +39,7 @@ func (u *userBuilder) List(ctx context.Context, _ *v2.ResourceId, _ *pagination.
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("error getting user details %s: %w", userID, err)
 		}
-		userResource, err := parseIntoUserResource(ctx, &userCopy)
+		userResource, err := parseIntoUserResource(&userCopy)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -78,21 +78,16 @@ func (u *userBuilder) Grants(ctx context.Context, res *v2.Resource, _ *paginatio
 		for _, roleName := range roleTypeData.RoleList {
 			description := getRoleDescription(roleName)
 
-			typedRole := client.Role{
-				Name:        roleName,
+			roleResource := &v2.Resource{
+				Id: &v2.ResourceId{
+					ResourceType: roleResourceType.Id,
+					Resource:     fmt.Sprintf("%s:%s", roleTypeData.RoleType, roleName),
+				},
+				DisplayName: fmt.Sprintf("%s:%s", roleTypeData.RoleType, roleName),
 				Description: description,
-				Type:        roleTypeData.RoleType,
 			}
 
-			roleResource, err := parseIntoRoleResource(ctx, typedRole)
-			if err != nil {
-				return nil, "", nil, err
-			}
-
-			roleGrant := grant.NewGrant(roleResource, "assigned", res, grant.WithAnnotation(&v2.V1Identifier{
-				Id: fmt.Sprintf("role-grant:%s:%s:%s", roleName, userID, roleTypeData.RoleType),
-			}),
-			)
+			roleGrant := grant.NewGrant(roleResource, permissionName, res)
 			grants = append(grants, roleGrant)
 		}
 	}
@@ -124,7 +119,6 @@ func (u *userBuilder) CreateAccount(
 	}
 
 	userResource, err := parseIntoUserResource(
-		ctx,
 		&client.User{
 			DisplayName: newUser.Name,
 			Email:       newUser.EmailAddress,
@@ -176,7 +170,7 @@ func createNewUserInfo(accountInfo *v2.AccountInfo, credentialOptions *v2.Creden
 	return newUser, nil
 }
 
-func parseIntoUserResource(ctx context.Context, user *client.User) (*v2.Resource, error) {
+func parseIntoUserResource(user *client.User) (*v2.Resource, error) {
 	var userStatus = v2.UserTrait_Status_STATUS_ENABLED
 
 	var realm string
@@ -219,7 +213,7 @@ func parseIntoUserResource(ctx context.Context, user *client.User) (*v2.Resource
 	return ret, nil
 }
 
-func newUserBuilder(c *client.FluidTopicsClient) *userBuilder {
+func newUserBuilder(c client.FluidTopicsClientInterface) *userBuilder {
 	return &userBuilder{
 		resourceType: userResourceType,
 		client:       c,

@@ -1,6 +1,15 @@
 While developing the connector, please fill out this form. This information is needed to write docs and to help other users set up the connector.
 
 ## Connector capabilities
+- Sync Users and Roles.
+- Account provisioning:
+  When you creating and new account, the following fields are required:
+  - Name: The full display name of the user.
+  Example: Name Example
+  - Email Address: The user email address.
+  Example: email@example.com
+- Entitlements provisioning
+- User usage
 
 1. What resources does the connector sync?
     This connector syncs:

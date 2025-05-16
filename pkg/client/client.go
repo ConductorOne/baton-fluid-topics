@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
+	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
-	"github.com/conductorone/baton-sdk/pkg/ratelimit"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
@@ -25,13 +25,13 @@ const (
 
 type FluidTopicsClient struct {
 	httpClient  *uhttp.BaseHttpClient
-	TokenSource oauth2.TokenSource
-	BaseURL     string
+	tokenSource oauth2.TokenSource
+	baseURL     string
 }
 
 func New(ctx context.Context, bearerToken string, domain string) (*FluidTopicsClient, error) {
 	if !strings.HasPrefix(domain, "https://") {
-		return nil, fmt.Errorf("domain must start with http:// or https://")
+		return nil, fmt.Errorf("domain must start with http://")
 	}
 	domain = strings.TrimRight(domain, "/")
 	baseURL := fmt.Sprintf("%s/api", domain)
@@ -50,22 +50,10 @@ func New(ctx context.Context, bearerToken string, domain string) (*FluidTopicsCl
 
 	client := FluidTopicsClient{
 		httpClient:  cli,
-		TokenSource: getTokenSource(ctx, bearerToken),
-		BaseURL:     baseURL,
+		tokenSource: getTokenSource(bearerToken),
+		baseURL:     baseURL,
 	}
 	return &client, nil
-}
-
-func NewClient(bearerToken string, httpClient ...*uhttp.BaseHttpClient) (*FluidTopicsClient, error) {
-	tokenSource := getTokenSource(context.Background(), bearerToken)
-	var wrapper = &uhttp.BaseHttpClient{}
-	if len(httpClient) > 0 {
-		wrapper = httpClient[0]
-	}
-	return &FluidTopicsClient{
-		httpClient:  wrapper,
-		TokenSource: tokenSource,
-	}, nil
 }
 
 func (c *FluidTopicsClient) ListUsers(ctx context.Context) ([]User, string, annotations.Annotations, error) {
@@ -73,7 +61,7 @@ func (c *FluidTopicsClient) ListUsers(ctx context.Context) ([]User, string, anno
 	var res []User
 	var annotation annotations.Annotations
 
-	queryUrl, err := url.JoinPath(c.BaseURL, getUsers)
+	queryUrl, err := url.JoinPath(c.baseURL, getUsers)
 	if err != nil {
 		l.Error(fmt.Sprintf("Error creating UserResponse URL: %s", err))
 		return nil, "", nil, err
@@ -93,7 +81,7 @@ func (c *FluidTopicsClient) GetUserDetails(ctx context.Context, userID string) (
 	var res UserDataResponse
 	var annotation annotations.Annotations
 
-	queryUrl, err := url.JoinPath(c.BaseURL, fmt.Sprintf(getUserInfoById, userID))
+	queryUrl, err := url.JoinPath(c.baseURL, fmt.Sprintf(getUserInfoById, userID))
 	if err != nil {
 		l.Error(fmt.Sprintf("Error creating URL: %s", err))
 		return res.User, nil, err
@@ -113,7 +101,7 @@ func (c *FluidTopicsClient) GetAuthenticationInfo(ctx context.Context) (Authenti
 	var res AuthenticationInfo
 	var annotation annotations.Annotations
 
-	queryUrl, err := url.JoinPath(c.BaseURL, getAuthenticationInfo)
+	queryUrl, err := url.JoinPath(c.baseURL, getAuthenticationInfo)
 	if err != nil {
 		l.Error(fmt.Sprintf("Error creating URL: %s", err))
 		return res, nil, err
@@ -133,7 +121,7 @@ func (c *FluidTopicsClient) GetRolesByUserID(ctx context.Context, userID string)
 	var user UserRoles
 	var annotation annotations.Annotations
 
-	queryUrl, err := url.JoinPath(c.BaseURL, fmt.Sprintf(getUserRolesById, userID))
+	queryUrl, err := url.JoinPath(c.baseURL, fmt.Sprintf(getUserRolesById, userID))
 	if err != nil {
 		l.Error(fmt.Sprintf("Error creating URL: %s", err))
 		return user, nil, err
@@ -151,7 +139,7 @@ func (c *FluidTopicsClient) GetRolesByUserID(ctx context.Context, userID string)
 func (c *FluidTopicsClient) UpdateUserManualRoles(ctx context.Context, userID string, manualRoles []string) (annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 
-	queryUrl, err := url.JoinPath(c.BaseURL, fmt.Sprintf(getUserRolesById, userID))
+	queryUrl, err := url.JoinPath(c.baseURL, fmt.Sprintf(getUserRolesById, userID))
 	if err != nil {
 		l.Error("error creating URL", zap.Error(err))
 		return nil, err
@@ -172,7 +160,7 @@ func (c *FluidTopicsClient) UpdateUserManualRoles(ctx context.Context, userID st
 func (c *FluidTopicsClient) CreateUser(ctx context.Context, newUser NewUserInfo) (annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 
-	queryUrl, err := url.JoinPath(c.BaseURL, createUser)
+	queryUrl, err := url.JoinPath(c.baseURL, createUser)
 	if err != nil {
 		l.Error("error creating URL", zap.Error(err))
 		return nil, err
@@ -221,7 +209,7 @@ func (c *FluidTopicsClient) doRequest(
 		o(urlAddress)
 	}
 
-	authToken, err := c.TokenSource.Token()
+	authToken, err := c.tokenSource.Token()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,7 +228,12 @@ func (c *FluidTopicsClient) doRequest(
 	authToken.SetAuthHeader(req)
 
 	var errRes FluidTopicsAPIError
-	doOptions := []uhttp.DoOption{uhttp.WithErrorResponse(&errRes)}
+	var rateLimitDesc v2.RateLimitDescription
+
+	doOptions := []uhttp.DoOption{
+		uhttp.WithErrorResponse(&errRes),
+		uhttp.WithRatelimitData(&rateLimitDesc),
+	}
 	switch method {
 	case http.MethodGet, http.MethodPut, http.MethodPost:
 		if res != nil {
@@ -264,14 +257,11 @@ func (c *FluidTopicsClient) doRequest(
 	}
 
 	annotation := annotations.Annotations{}
+	annotation.WithRateLimiting(&rateLimitDesc)
+
 	if resp != nil {
-		if desc, err := ratelimit.ExtractRateLimitData(resp.StatusCode, &resp.Header); err == nil {
-			annotation.WithRateLimiting(desc)
-		} else {
-			return nil, annotation, err
-		}
 		return resp.Header, annotation, nil
 	}
 
-	return nil, nil, err
+	return nil, annotation, err
 }

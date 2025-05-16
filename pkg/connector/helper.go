@@ -9,6 +9,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/crypto"
 )
 
+const permissionName = "assigned"
+
 // getRoleDescription looks for the role description by its name.
 func getRoleDescription(roleName string) string {
 	if desc, ok := roles[roleName]; ok {

@@ -86,7 +86,7 @@ func New(ctx context.Context, fluidTopicsBearerToken string, fluidTopicsDomain s
 
 	fluidTopicClient, err := client.New(ctx, fluidTopicsBearerToken, fluidTopicsDomain)
 	if err != nil {
-		l.Error("error creating Braintree client", zap.Error(err))
+		l.Error("error creating Fluid Topics client", zap.Error(err))
 		return nil, err
 	}
 

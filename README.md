@@ -2,7 +2,7 @@
 
 # `baton-fluid-topics` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-fluid-topics.svg)](https://pkg.go.dev/github.com/conductorone/baton-fluid-topics) ![main ci](https://github.com/conductorone/baton-fluid-topics/actions/workflows/main.yaml/badge.svg)
 
-`baton-fluid-topics` is a connector for built using the [Fluid-Topics](https://www.fluidtopics.com/).
+`baton-fluid-topics` is a connector for [Fluid-Topics](https://www.fluidtopics.com/) built using the [Baton SDK](https://github.com/conductorone/baton-sdk).
 
 Check out [Baton](https://github.com/conductorone/baton) to learn more the project in general.
 
@@ -24,6 +24,17 @@ For connecting to https://example.fluidtopics.net you should do:
 5- After configuring your api key click on ok, and when the menu closes, in the integrations page with the apikey list click on save in the lower right corner.
    
 Note: documentation of api keys: [Fluid-topics-APIKEY](https://doc.fluidtopics.com/r/Fluid-Topics-Configuration-and-Administration-Guide/Configure-a-Fluid-Topics-tenant/Integrations/API-keys)
+
+# Connector capabilities
+- Sync Users and Roles.
+- Account provisioning:
+    When you creating and new account, the following fields are required:
+        - Name: The full display name of the user.
+               Example: Name Example 
+        - Email Address: The user email address. 
+               Example: email@example.com
+- Entitlements provisioning
+- User usage
 
 # Getting Started
 
